@@ -7,13 +7,13 @@ import os
 import pickle
 import argparse
 
-seed=10
+seed=random.randint(0,5000)
 random.seed(seed)
 size=38
 width=288
 height=512
-speed=3
-bdim=(33,23)
+speed=12
+bdim=(29,20)
 odim=(52,320)
 population=[]
 max_score=0
@@ -32,13 +32,17 @@ class machine:
     def play(self,pos):
         if self.bird.alive:
             self.frames+=1
-            input=np.array([self.bird.getpos()[1],pos[0]-self.bird.getpos()[0],pos[1]])
-            input=np.reshape(input,(1,input.size))
-            if self.model.predict(input)<=0.5:
-                self.bird.jump(True)
+            if self.frames%1==0:
+                input=np.array([self.bird.getpos()[1],pos[0]-self.bird.getpos()[0],pos[1]])
+                input=np.reshape(input,(1,input.size))
+                if self.model.predict(input)<=0.5:
+                    self.bird.jump(True)
+                else:
+                    self.bird.change_pos()
+                self.bird.draw()
             else:
                 self.bird.change_pos()
-            self.bird.draw()
+                self.bird.draw()
 
     def activate_model(self):
         self.model.add(keras.layers.Dense(7, input_shape=(3,),activation='relu'))
@@ -53,7 +57,7 @@ class machine:
 
     def death(self):
         self.bird.alive=False
-        self.fitness=self.score+(self.frames/100)
+        self.fitness=self.score+(self.frames/40)
 
     def reset(self):
         self.score=0
@@ -62,6 +66,9 @@ class machine:
         self.fitness=0
 
 class obstacle :
+    inv=pygame.image.load("inv_pipe.png")
+    pipe=pygame.image.load("pipe.png")
+
     def __init__(self):
         self.x=width
         #define a gap between the pipes and create it
@@ -69,8 +76,6 @@ class obstacle :
         self.y1=random.randrange(45+self.gap,height-(112+31))
         self.y2=self.y1-self.gap-320
         self.velocity=speed
-        self.inv=pygame.image.load("inv_pipe.png")
-        self.pipe=pygame.image.load("pipe.png")
 
     def move(self):
         self.x-=self.velocity
@@ -79,23 +84,22 @@ class obstacle :
         return self.x,self.y1,self.y2
  
     def draw(self):
-        screen.blit(self.pipe,(self.x,self.y1))
-        screen.blit(self.inv,(self.x,self.y2))
+        screen.blit(obstacle.pipe,(self.x,self.y1))
+        screen.blit(obstacle.inv,(self.x,self.y2))
 
 class Bird :
-    def __init__(self,birdtype="default"):
+    up=pygame.image.load("up.png")
+    mid=pygame.image.load("mid.png")
+    down=pygame.image.load("down.png")
+
+    def __init__(self):
         global height
-        self.birdtype=birdtype
         self.x=100
         self.y=height//2
         self.count=0
         self.jumpheight=4
         self.alive=True
         self.jumping=False
-        if birdtype== "default":
-            self.up=pygame.image.load("up.png")
-            self.mid=pygame.image.load("mid.png")
-            self.down=pygame.image.load("down.png")
             
     def getpos(self):
         return (self.x,self.y)
@@ -104,7 +108,7 @@ class Bird :
         if self.jumping:
             self.jump()
         else:
-            self.y+=4.5
+            self.y+=15
             self.count+=1
             #count is used only to animate the bird
             if self.count>= 12:
@@ -114,7 +118,7 @@ class Bird :
         if key:
             self.jumpheight=4
         if self.jumpheight>=0 and self.y>0:
-            self.y-=(self.jumpheight**2)*0.55
+            self.y-=(self.jumpheight**2)*1.2
             self.jumpheight-=1
             if self.count>= 12:
                 self.count=0
@@ -125,13 +129,13 @@ class Bird :
 
     def draw(self):
         if self.count//3 ==0:
-            screen.blit(self.mid,(self.x,int(self.y)))
+            screen.blit(Bird.mid,(self.x,int(self.y)))
         elif self.count//3 ==1:
-            screen.blit(self.down,(self.x,int(self.y)))
+            screen.blit(Bird.down,(self.x,int(self.y)))
         elif self.count//3 ==2:
-            screen.blit(self.mid,(self.x,int(self.y)))
+            screen.blit(Bird.mid,(self.x,int(self.y)))
         else:
-            screen.blit(self.up,(self.x,int(self.y)))
+            screen.blit(Bird.up,(self.x,int(self.y)))
     
 class Text:
     def __init__(self,size=25):
@@ -146,8 +150,8 @@ def collision(bcord,ocord):
     if bcord[1]+20>height-112:
         return True
     #check if bird hit a obstacle
-    if bcord[0]+bdim[0]>=ocord[0] and bcord[0]<= ocord[0]+odim[0]:
-        if bcord[1]<=ocord[2]+odim[1] or bcord[1]+bdim[1]>=ocord[1]:
+    if bcord[0]+bdim[0]>ocord[0] and bcord[0]< ocord[0]+odim[0]:
+        if bcord[1]<ocord[2]+odim[1] or bcord[1]+bdim[1]>ocord[1]:
             return True
 
 def init_pop(size):
@@ -177,20 +181,21 @@ def new_pop(size):
                 idx2 = idxx
                 break
         child1_weights,child2_weights = crossover(idx1,idx2)
-        child1_weights = mutate(child1_weights)
-        child2_weights = mutate(child2_weights)
+        mutate(child1_weights)
+        mutate(child2_weights)
         new_weights.append(child1_weights)
         new_weights.append(child2_weights)
     #picking good genes from last generation
-    for i in range(len(population)):
+    for i in range(4):
         for j in range(0,len(population)-i-1):
-            if population[j+1].fitness>population[j].fitness:
+            if population[j+1].fitness<population[j].fitness:
                 population[j],population[j+1]=population[j+1],population[j]
-    for i in range(5):
-        weight=population[i].model.get_weights()
+    for i in range(1,5):
+        weight=population[len(population)-i].model.get_weights()
         member=machine()
         member.model.set_weights(weight)
-        old_population.append(member) 
+        old_population.append(member)
+       
     #updating population and removing previous members
     for select in range(len(new_weights)):
         population[select].model.set_weights(new_weights[select])
@@ -207,17 +212,15 @@ def mutate(weights):
             #try because weights[1],weights[3] are 1D array
             try:
                 for k in range(weights[i].shape[1]):
-                    if random.uniform(0,1)<=0.1:
+                    if random.uniform(0,1)<=0.15:
                         weights[i][j,k]*=1.3
-                    elif random.uniform(0,1)<=(1/9.0):
+                    elif random.uniform(0,1)<=(3/17.0):
                         weights[i][j,k]/=1.3
             except:
-                if random.uniform(0,1)<=0.1:
+                if random.uniform(0,1)<=0.15:
                     weights[i][j]*=1.3
-                elif random.uniform(0,1)<=(1/9.0):
+                elif random.uniform(0,1)<=(3/17.0):
                     weights[i][j]/=1.3
-    return weights
-
 
 def crossover(idx1,idx2):
     parent1_weights=population[idx1].model.get_weights()
@@ -235,7 +238,7 @@ def crossover(idx1,idx2):
     return weights1,weights2
 
 
-def fitness():
+def fitness(gen='Z'):
     #the function starts the game and each machine tries to score
     #the game ends when all birds have died
     pygame.init()
@@ -248,10 +251,12 @@ def fitness():
     clock=pygame.time.Clock()
     x=0
     count=0
-    key=random.randrange(60,100)
+    random.seed(seed)
+    key=random.randrange(18,25)
     done=False
     global population
     obstacles=[]
+    text=Text(20)
     while not done:
         for event in pygame.event.get():
             if event.type== pygame.QUIT:
@@ -264,24 +269,25 @@ def fitness():
         screen.blit(bg,(0,0))
         for obst in obstacles:
             obst.draw() 
+        text.write("GEN {}".format(gen),5,5)
         screen.blit(ground,(x,height-112))
-        #add obstacles to the game
-        if len(obstacles) < 3 and count==key:
-            count=0
-            key=random.randrange(60,100)
-            obst=obstacle()
-            obstacles.append(obst)
-        if len(obstacles)==0:
-            count=0
-            key=random.randrange(60,100)
-            obst=obstacle()
-            obstacles.append(obst)
         #move and remove the obstacles
         for obst in obstacles:
             obst.move()
             pos=obst.getpos()
             if pos[0]<= -odim[0]:
                 obstacles.remove(obst)
+        #add obstacles to the game
+        if len(obstacles) < 3 and count==key:
+            count=0
+            key=random.randrange(18,25)
+            obst=obstacle()
+            obstacles.append(obst)
+        if len(obstacles)==0:
+            count=0
+            key=random.randrange(18,25)
+            obst=obstacle()
+            obstacles.append(obst)
         #find obstacle to deal with first
         index=0
         for i in range(len(obstacles)):
@@ -301,23 +307,26 @@ def fitness():
         flag=True
         for member in population:
             if member.bird.alive:
+                text.write("SCORE:%d"%(member.score),5,20)
                 flag=False
+                break
         if flag:
             done=True
+        clock.tick(15)
         pygame.display.update()
-        clock.tick(60)
     pygame.display.quit()
     total_fitness=0
     global score
     score=[]
-    for member in population:
-        total_fitness += member.fitness
     #find maximum score in the generation
     for select in range(len(population)):
         score.append(population[select].fitness)
     global max_score
     max_score=max(score)
+    population[score.index(max_score)].fitness*=2
     #manipulating score for use in selection
+    for member in population:
+        total_fitness += member.fitness
     score=[]
     for select in range(len(population)): 
         score.append(population[select].fitness/total_fitness)
@@ -326,6 +335,7 @@ def fitness():
     return
 
 def main():
+    global weights
     parser=argparse.ArgumentParser()
     parser.add_argument("--trial","-t",action="store_true",required=False)
     args=parser.parse_args()
@@ -342,23 +352,26 @@ def main():
         os.system('cls||echo -e \\\\033c')
         return
     init_pop(size)
-    fitness()
+    fitness(0)
     os.system('cls||echo -e \\\\033c')
     print("GEN 0 completed,max score:%0.2f"%(max_score))
-    for k in range(7): 
+    for k in range(15): 
         new_pop(size)
-        fitness()
+        fitness(k+1)
         print("GEN %d completed,max score:%0.2f"%(k+1,max_score))
     choice=input("Save program?:")
     if  choice=="s":
         pickle_in= open("Weights.pickle","rb")
         weights=pickle.load(pickle_in)    
         for member in population:
-            if member.fitness ==max_score:
+            if member.fitness >=max_score*2-1:
+                print("Done")
                 weights.append( member.model.get_weights())
+                break
         pickle_out=open("Weights.pickle","wb")
         pickle.dump(weights,pickle_out)
         pickle_out.close()
+
 
 if __name__ == '__main__':
     main()
